@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { viewportUnit } from "../lib/viewport";
 
 const LINKS = ["Residences", "Philosophy", "Journal", "Enquire"];
 
@@ -21,8 +22,10 @@ export default function Header() {
     const hero = document.querySelector<HTMLElement>(".hero");
 
     const read = () => {
-      // header text sits roughly 38px down at the reference viewport height
-      const threshold = window.innerHeight * 0.043 + 6;
+      // header text sits roughly 38px down at the reference viewport height.
+      // The stable unit, so a phone's toolbar sliding cannot walk the line the
+      // marks are tested against and flicker the colour at a boundary.
+      const threshold = viewportUnit() * 0.043 + 6;
       // the last marker the header has passed wins
       let tone = "ink";
       for (const mark of marks) {

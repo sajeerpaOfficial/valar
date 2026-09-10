@@ -296,10 +296,20 @@ img {
 }
 
 /* the building is pinned to the viewport, and rides down over the statement
-   panel (z 2) while staying under the gallery (z 4) that finally hides it */
+   panel (z 2) while staying under the gallery (z 4) that finally hides it.
+
+   Height is stated rather than left to `inset: 0` so the box matches the sky's
+   to the pixel. A fixed box grows and shrinks with a phone's address bar while
+   the sky, cut to svh, holds still — and since the two halves of the one
+   photograph are each cover-fitted into their own box, a difference between
+   them scales the halves differently and the roofline stops meeting the sky.
+   Pinning it to svh also stops a full-screen layer being resized and
+   re-rastered in the middle of a scroll. */
 .hero__building {
   position: fixed;
-  inset: 0;
+  inset: 0 0 auto 0;
+  height: 100vh;
+  height: 100svh;
   z-index: 3;
   overflow: hidden;
   pointer-events: none;
@@ -395,6 +405,7 @@ img {
 @media (prefers-reduced-motion: no-preference) {
   .stack {
     margin-bottom: -61vh;
+    margin-bottom: -61svh; /* the unit the script measures the lift in */
   }
 }
 
@@ -402,8 +413,13 @@ img {
   /* pins to the top while the gallery climbs over it */
   position: sticky;
   top: -4.2vh;
+  top: -4.2svh;
   z-index: 2;
+  /* svh like the hero and the gallery: PANEL_BOTTOM in Gallery.tsx is where
+     this panel's lower edge lands, and the two only agree on a phone if the
+     panel is cut in the same unit the script measures against */
   height: 91.2vh;
+  height: 91.2svh;
   background: var(--dark);
   padding: 9.4vh var(--pad) 0;
 }

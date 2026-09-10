@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef } from "react";
+import { viewportUnit } from "../lib/viewport";
 
 /**
  * Three things move at three different rates in the hero.
@@ -29,6 +30,17 @@ import { useEffect, useRef } from "react";
  * leaves it is travelling at nearly twice the scroll rate. It clears a full
  * viewport height well before the gallery arrives, so the building sees itself
  * out rather than parking at the bottom edge waiting to be covered.
+ *
+ * Both numbers are read against the hero's own height rather than against
+ * `innerHeight`, and the travel is written out in px rather than vh. On a
+ * desktop those are three names for the same measurement. On a phone they are
+ * not: `innerHeight` shrinks and grows as the address bar slides away, while
+ * the CSS vh it was being multiplied back out by does not — so the progress
+ * would step by ~9% with the scroll position unchanged and throw the building
+ * up to 165px down the screen in a single frame. The hero is one viewport of
+ * `svh`, which is the height the timeline is actually cut against and which
+ * holds still while the bar moves, so the one measurement is used for both
+ * halves of the sum and the step has nothing to act on. See `lib/viewport`.
  */
 const SLIDE_FROM = 0.47;
 const SLIDE_OVER = 0.38;
@@ -51,30 +63,43 @@ export default function HeroMedia() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     let raf = 0;
+    let last = -1;
 
     const draw = () => {
-      raf = 0;
-      const p = window.scrollY / window.innerHeight;
+      // one viewport of `svh` — the height the hero is cut to, and the one a
+      // sliding address bar leaves alone
+      const unit = viewportUnit();
+      const p = window.scrollY / unit;
       const t = clamp01((p - SLIDE_FROM) / SLIDE_OVER);
       const d = Math.max(0, p - EXIT_FROM);
-      const travel = Math.min(
-        (1 - Math.pow(1 - t, EASE)) * SLIDE_VH + EXIT_SPEED * d + EXIT_ACCEL * d * d,
-        EXIT_VH
-      );
-      el.style.transform = `translate3d(0, ${travel.toFixed(2)}vh, 0)`;
+      const travel =
+        (Math.min(
+          (1 - Math.pow(1 - t, EASE)) * SLIDE_VH +
+            EXIT_SPEED * d +
+            EXIT_ACCEL * d * d,
+          EXIT_VH
+        ) *
+          unit) /
+        100;
+
+      // the building is `fixed`, so the compositor holds it to the viewport on
+      // its own and only this offset is ours to keep up with — writing it only
+      // when it actually moves keeps the still frames free of style work
+      if (travel !== last) {
+        last = travel;
+        el.style.transform = `translate3d(0, ${travel.toFixed(2)}px, 0)`;
+      }
+
+      // read at frame time rather than on scroll events: a phone coalesces
+      // those and delivers them behind the compositor, so a listener lands the
+      // transform a frame or more late against a page that has already moved —
+      // which is the judder. Same loop the gallery runs, for the same reason.
+      raf = requestAnimationFrame(draw);
     };
 
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(draw);
-    };
-
-    draw();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    raf = requestAnimationFrame(draw);
     return () => {
-      if (raf) cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
     };
   }, []);
 

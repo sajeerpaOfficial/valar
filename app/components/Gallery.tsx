@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { onViewportChange, viewportUnit } from "../lib/viewport";
 
 const ESTATES = [
   { src: "/img/estate-1.jpg", alt: "Low pavilion estate under old-growth canopy" },
@@ -78,9 +79,14 @@ export default function Gallery() {
 
     let raf = 0;
     let top = flowTop();
+    let lastShift = NaN;
+    let lastHandoff = NaN;
 
     const draw = () => {
-      const vh = window.innerHeight;
+      // the stable height, not innerHeight: these thresholds are what decide
+      // when the section leaves the panel, and a toolbar sliding must not
+      // move them out from under a climb that is already running
+      const vh = viewportUnit();
       const from = vh * PANEL_BOTTOM;
       const span = vh * TAKEOVER;
       const natural = top - window.scrollY;
@@ -93,17 +99,26 @@ export default function Gallery() {
         const u = clamp01((from - natural) / span);
         painted = u >= 1 ? natural - lift : takeover(u, from, span);
       }
-      section.style.transform = `translate3d(0, ${(painted - natural).toFixed(2)}px, 0)`;
+      const shift = painted - natural;
+      if (shift !== lastShift) {
+        lastShift = shift;
+        section.style.transform = `translate3d(0, ${shift.toFixed(2)}px, 0)`;
+      }
 
       // …which finishes before the rising edge can reach the copy, so nothing
       // is ever seen sliced in half
       const handoff = smoothstep(
         clamp01((FADE_FROM * vh - natural) / (FADE_SPAN * vh))
       );
-      document.documentElement.style.setProperty(
-        "--panel-handoff",
-        handoff.toFixed(3)
-      );
+      // a custom property on the root invalidates style for everything that
+      // reads it, so it is written only when the number it carries changes
+      if (handoff !== lastHandoff) {
+        lastHandoff = handoff;
+        document.documentElement.style.setProperty(
+          "--panel-handoff",
+          handoff.toFixed(3)
+        );
+      }
 
       // running every frame keeps it locked to the smooth-scrolled position;
       // waiting on scroll events lands the transform a frame late and stutters
@@ -113,12 +128,15 @@ export default function Gallery() {
     const onResize = () => {
       top = flowTop();
     };
+    // a rotation changes the stable height too; both paths just re-measure
+    const stop = onViewportChange(onResize);
 
     raf = requestAnimationFrame(draw);
     window.addEventListener("resize", onResize);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
+      stop();
     };
   }, []);
 

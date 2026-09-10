@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef } from "react";
+import { onViewportChange, viewportUnit } from "../lib/viewport";
 
 const SHOTS = [
   { src: "/img/interior-1.jpg", alt: "Principal bedroom with a tufted headboard and linen bench" },
@@ -32,6 +33,16 @@ const BOW = 1.032;
 /** cards travelled across one full traverse of the section */
 const TRAVEL = 6;
 
+/**
+ * The offset chases the scroll rather than tracking it, which is what lets the
+ * strip glide on for a beat after the wheel stops. It used to chase by a fixed
+ * fraction per frame, which quietly made the glide a function of the display:
+ * the same gesture settled in half the time on a 120Hz phone as on a 60Hz one,
+ * and dragged out again whenever a frame was dropped. Same curve, expressed as
+ * the time it takes instead — 214ms is what 0.075 a frame came to at 60Hz.
+ */
+const GLIDE_MS = 214;
+
 export default function StudioCarousel() {
   const sectionRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -49,27 +60,52 @@ export default function StudioCarousel() {
     let raf = 0;
     let target = 0;
     let current = 0;
+    let last = Infinity;
+
+    /**
+     * Everything the strip is laid out from, read once per resize. Asking the
+     * DOM for a width or a computed style inside the loop forces the browser
+     * to lay the page out again before it can answer, on every frame, for as
+     * long as the page is open — which is most of the cost this section used
+     * to carry on a phone.
+     */
+    let flowTop = 0;
+    let height = 0;
+    let vw = 0;
+    let w = 0;
+    let pitch = 0;
+    let span = 0;
+
+    const geometry = () => {
+      let el: HTMLElement | null = section;
+      let y = 0;
+      while (el) {
+        y += el.offsetTop;
+        el = el.offsetParent as HTMLElement | null;
+      }
+      flowTop = y;
+      height = section.offsetHeight;
+      vw = track.clientWidth;
+      w = cards[0]?.offsetWidth || 0;
+      pitch = w + (parseFloat(getComputedStyle(track).columnGap) || 0);
+      span = pitch * cards.length;
+    };
 
     const read = () => {
-      const rect = section.getBoundingClientRect();
+      // the section's own top, from the cached flow position — the same number
+      // getBoundingClientRect would return, without making the browser lay the
+      // page out to produce it
+      const top = flowTop - window.scrollY;
+      const unit = viewportUnit();
       // 0 as the section's top enters at the bottom of the window, 1 as its own
       // bottom leaves past the top — so the strip keeps travelling for as long
       // as any part of the section is on screen, footer or no footer
-      const p = (window.innerHeight - rect.top) / (rect.height + window.innerHeight);
-      const pitch = cards[0]?.offsetWidth
-        ? cards[0].offsetWidth + gap()
-        : window.innerWidth * 0.216;
-      target = (Math.min(Math.max(p, 0), 1) - 0.5) * TRAVEL * pitch;
+      const p = (unit - top) / (height + unit);
+      target = (Math.min(Math.max(p, 0), 1) - 0.5) * TRAVEL * (pitch || vw * 0.216);
     };
 
-    const gap = () => parseFloat(getComputedStyle(track).columnGap) || 0;
-
     const layout = (offset: number) => {
-      const vw = track.clientWidth;
       const centre = vw / 2;
-      const w = cards[0].offsetWidth;
-      const pitch = w + gap();
-      const span = pitch * cards.length;
 
       cards.forEach((card, i) => {
         // wrap the strip so it reads as endless in both directions
@@ -95,30 +131,49 @@ export default function StudioCarousel() {
     };
 
     const measure = () => {
+      geometry();
       read();
+      last = Infinity; // geometry moved, so the strip has to be written again
       if (reduced) layout(target);
     };
 
     measure();
+    // the faces load with `display: swap`, so the title reflows after first
+    // paint and the section is not the height it was measured at
+    document.fonts?.ready.then(measure);
 
     if (!reduced) {
       current = target;
-      const loop = () => {
-        // easing the offset rather than the scroll lets the strip glide on
-        // for a beat after the wheel stops
-        current += (target - current) * 0.075;
-        layout(current);
+      let prev = 0;
+      const loop = (now: number) => {
+        // reading the scroll here rather than from a listener keeps the strip
+        // on the position the frame is actually being drawn at; a phone
+        // coalesces scroll events and delivers them behind the compositor
+        read();
+
+        // a tab left in the background hands back one enormous delta on its
+        // way in; cap it so the strip resumes rather than lurches
+        const dt = prev ? Math.min(now - prev, 100) : 16.7;
+        prev = now;
+        current += (target - current) * (1 - Math.exp(-dt / GLIDE_MS));
+
+        // asymptotic easing never quite arrives, so it would otherwise rewrite
+        // eight transforms a frame for ever over a difference no one can see
+        if (Math.abs(current - last) > 0.01) {
+          last = current;
+          layout(current);
+        }
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
     }
 
-    window.addEventListener("scroll", read, { passive: true });
+    const stop = onViewportChange(measure);
     window.addEventListener("resize", measure);
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", read);
       window.removeEventListener("resize", measure);
+      stop();
     };
   }, []);
 
