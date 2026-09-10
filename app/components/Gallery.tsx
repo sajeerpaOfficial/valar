@@ -17,14 +17,22 @@ const MARQUEE = "Selected residences —";
  * The gallery used to crawl up across the statement, its top edge wiping over
  * the copy for a full viewport of scrolling. Instead its approach is compressed:
  * it rises normally until it meets the bottom of the pinned panel, and from
- * there a power curve carries it to full screen in a fraction of the distance,
- * so there is no drawn-out state where it sits half over the text.
+ * there a curve carries it to full screen in a fraction of the distance, so
+ * there is no drawn-out state where it sits half over the text.
  *
- * Layout is untouched — only the paint position moves — so the section that
- * follows keeps its place in the flow and the hand-off needs no spacer.
+ * The climb therefore arrives SETTLE early — it is painted that far above the
+ * place the flow put it. That head start is a debt: left alone, the section sits
+ * full screen and motionless until the scroll catches up with its own box, and
+ * only then can the section below start to show. So the lift is kept rather than
+ * dropped — once landed the gallery holds the same offset and travels with the
+ * scroll again — and `.stack` gives the same distance back out of the flow, so
+ * the studio panel is riding exactly on the gallery's bottom edge as it lands
+ * and comes in on the next scroll rather than after another two thirds of a
+ * screen. Keep the margin there in step with SETTLE.
  */
 const PANEL_BOTTOM = 0.87; // where `.statement` ends once it is pinned
 const TAKEOVER = 0.26; // scroll it takes to go from there to full screen
+const SETTLE = PANEL_BOTTOM - TAKEOVER; // …so it lands this far above its box
 const FADE_FROM = 0.97; // the copy starts clearing as the gallery shows itself…
 const FADE_SPAN = 0.2; // …and is gone well before the rising edge reaches it
 
@@ -35,12 +43,17 @@ const smoothstep = (t: number) => t * t * (3 - 2 * t);
  * A power curve gets there fast but starts at many times the scroll rate, which
  * reads as a lurch the instant the section is touched. This is a cubic Hermite
  * pinned at both ends instead: it leaves the panel already matching the speed
- * the section was rising at (gradient 1), accelerates through the middle, and
- * arrives at the top with the gradient back at 0 — so it settles into place
- * rather than slamming into it. No step in position or in velocity anywhere.
+ * the section was rising at, accelerates through the middle, and arrives at the
+ * top still matching it — gradient 1 at both ends, peaking around 4.5× in
+ * between. No step in position or in velocity anywhere.
+ *
+ * It used to arrive at gradient 0, settling into place. That reads well only if
+ * the section is then going to hold; here it carries straight on into the exit,
+ * so landing at rest and leaving at full speed would put a kink in the motion at
+ * the very moment the eye is on it.
  */
 const takeover = (u: number, from: number, span: number) =>
-  from * (2 * u ** 3 - 3 * u ** 2 + 1) - span * (u ** 3 - 2 * u ** 2 + u);
+  from * (2 * u ** 3 - 3 * u ** 2 + 1) - span * (2 * u ** 3 - 3 * u ** 2 + u);
 
 export default function Gallery() {
   // nothing is expanded until a frame is picked up — as in the reference
@@ -72,10 +85,13 @@ export default function Gallery() {
       const span = vh * TAKEOVER;
       const natural = top - window.scrollY;
 
+      // once landed the lift is held, not released, so the next scroll moves the
+      // section on instead of spending the head start standing still
+      const lift = vh * SETTLE;
       let painted = natural;
-      if (natural < from && natural > 0) {
+      if (natural < from) {
         const u = clamp01((from - natural) / span);
-        painted = u >= 1 ? 0 : takeover(u, from, span);
+        painted = u >= 1 ? natural - lift : takeover(u, from, span);
       }
       section.style.transform = `translate3d(0, ${(painted - natural).toFixed(2)}px, 0)`;
 

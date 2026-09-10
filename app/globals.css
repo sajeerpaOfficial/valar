@@ -46,6 +46,16 @@ html {
   background: var(--dark);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* the reel carries no chrome — the page still scrolls by wheel, key, touch
+     and scrollbar-less drag, the bar is simply never painted */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
 }
 
 body {
@@ -88,15 +98,69 @@ img {
   color: #fff;
 }
 
+/* The frosted bar. It is a pseudo-element rather than a background on the
+   header itself so the panel can fade in on its own while the colour flip runs
+   on its own clock, and so the blur is only ever asked for once there is a
+   section running under the header to blur — over the hero the bar stays clear
+   glass, as the reference has it.
+
+   The veil is white in both themes and only the strength changes: 6% over the
+   dark panels reads as smoked glass, 55% over the cream studio reads as frost,
+   and either way the logo keeps its contrast against whatever passes behind. */
+.header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(10, 10, 10, 0.07);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  opacity: 0;
+  transition: opacity 0.35s ease, background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.header[data-glass="true"]::before {
+  opacity: 1;
+}
+
+.header[data-theme="light"]::before {
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+/* no backdrop-filter — a transparent bar over moving content is unreadable,
+   so the veil closes up instead and the panel reads as solid-ish */
+@supports not (
+  (backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))
+) {
+  .header::before {
+    background: rgba(255, 255, 255, 0.86);
+  }
+
+  .header[data-theme="light"]::before {
+    background: rgba(26, 26, 26, 0.76);
+  }
+}
+
 .header > * {
   pointer-events: auto;
 }
 
+/* The wordmark is set in the face the rest of the site is set in. The display
+   family carries two registers: the headline one is pushed to the end of the
+   width axis and stretched on top (hero and section titles, wdth 150 +
+   scaleX), the interface one is left unstretched (menu links at wdth 122, the
+   footer line at 118). A 22px wordmark belongs to the second — stretching
+   glyphs at that size distorts them — so it takes the menu's width and
+   tracking, and keeps the weight the mark already had. Footer mark matches. */
 .logo {
-  font-family: var(--font-brand), sans-serif;
+  font-family: var(--font-display), sans-serif;
+  font-variation-settings: "wdth" 122;
   font-weight: 700;
   font-size: var(--fs-logo);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   line-height: 1;
   color: inherit;
   text-decoration: none;
@@ -317,6 +381,22 @@ img {
 /* ------------------------------------------------------------
    Statement + stats
    ------------------------------------------------------------ */
+
+/* The gallery is painted 61vh above the place the flow put it — the climb over
+   the panel is compressed into a quarter of the distance it covers (SETTLE in
+   Gallery.tsx: PANEL_BOTTOM 0.87 − TAKEOVER 0.26). The stack hands that same
+   61vh back so the studio panel below sits on the gallery's bottom edge as it
+   lands, instead of waiting out the difference off-screen. Sticky range is
+   unaffected: the margin is outside the box the panel is pinned within.
+
+   Gated on the same query Gallery.tsx bails out on — with the climb switched
+   off the section stays where the flow put it, and taking the 61vh out from
+   under it would let the studio panel ride up over the frames. */
+@media (prefers-reduced-motion: no-preference) {
+  .stack {
+    margin-bottom: -61vh;
+  }
+}
 
 .statement {
   /* pins to the top while the gallery climbs over it */
@@ -619,10 +699,11 @@ img {
 }
 
 .footer__logo {
-  font-family: var(--font-brand), sans-serif;
+  font-family: var(--font-display), sans-serif;
+  font-variation-settings: "wdth" 122;
   font-weight: 700;
   font-size: clamp(22px, 2.4vw, 42px);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   line-height: 1;
   color: #fff;
   text-decoration: none;

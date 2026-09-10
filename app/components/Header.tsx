@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const LINKS = ["Residences", "Philosophy", "Journal", "Enquire"];
 
@@ -10,13 +10,15 @@ const LINKS = ["Residences", "Philosophy", "Journal", "Enquire"];
  */
 export default function Header() {
   const [onDark, setOnDark] = useState(false);
+  const [glass, setGlass] = useState(false);
   const [open, setOpen] = useState(false);
+  const barRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const marks = Array.from(
       document.querySelectorAll<HTMLElement>(".tone-mark")
     );
-    if (!marks.length) return;
+    const hero = document.querySelector<HTMLElement>(".hero");
 
     const read = () => {
       // header text sits roughly 38px down at the reference viewport height
@@ -29,6 +31,16 @@ export default function Header() {
         }
       }
       setOnDark(tone === "paper");
+
+      // The glass is only worth having once there is something behind it to
+      // frost, so it waits for the hero to clear the bar rather than for the
+      // page to start moving — measured against the bar's own height so the
+      // veil arrives as the section below meets its lower edge, not a screen
+      // later. Over the hero photograph the header stays clear.
+      const bar = barRef.current;
+      if (hero && bar) {
+        setGlass(hero.getBoundingClientRect().bottom <= bar.offsetHeight);
+      }
     };
 
     read();
@@ -49,7 +61,15 @@ export default function Header() {
 
   return (
     <>
-      <header className="header" data-theme={onDark || open ? "light" : "dark"}>
+      {/* the menu is a solid panel of its own — a frosted strip across the top
+          of it would read as a seam rather than as glass, so the veil drops
+          while it is open */}
+      <header
+        className="header"
+        ref={barRef}
+        data-theme={onDark || open ? "light" : "dark"}
+        data-glass={glass && !open ? "true" : "false"}
+      >
         <a className="logo" href="#top">
           Velar<b>.</b>
         </a>
